@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'none';
+  script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval';
+  worker-src blob:;
+  connect-src 'self' https://cdn.jsdelivr.net https://huggingface.co;
+  style-src 'unsafe-inline';
+">
+<title>練馬区 手続き検索</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic', sans-serif;
+    background: #f0f2f5;
+    color: #222;
+    min-height: 100vh;
+  }
+
+  header {
+    background: #1a56a0;
+    color: #fff;
+    padding: 20px 24px;
+  }
+  header h1 { font-size: 1.3rem; font-weight: 700; letter-spacing: .04em; }
+
+  main {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 24px 16px 48px;
+  }
+
+  #search-box {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    margin-bottom: 8px;
+  }
+
+  #query {
+    width: 100%;
+    padding: 12px 16px;
+    font-size: 1rem;
+    border: 2px solid #cdd4e0;
+    border-radius: 8px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  #query:focus { border-color: #1a56a0; }
+  #query:disabled { background: #f5f5f5; color: #999; cursor: not-allowed; }
+
+  #status {
+    font-size: .82rem;
+    color: #666;
+    margin-top: 8px;
+    min-height: 1.2em;
+  }
+  #status.error { color: #c0392b; }
+  #status.ready { color: #27ae60; }
+
+  #progress-bar {
+    height: 3px;
+    background: #e0e0e0;
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+    display: none;
+  }
+  #progress-fill {
+    height: 100%;
+    background: #1a56a0;
+    width: 0%;
+    transition: width .3s;
+  }
+
+  #results {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .result-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 16px 18px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    border-left: 4px solid #1a56a0;
+  }
+  .result-card:hover { box-shadow: 0 3px 10px rgba(0,0,0,.12); }
+
+  .card-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #1a56a0;
+    margin-bottom: 4px;
+  }
+
+  .card-purpose {
+    font-size: .88rem;
+    color: #444;
+    line-height: 1.5;
+    margin-bottom: 8px;
+  }
+
+  .card-meta {
+    font-size: .78rem;
+    color: #777;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .card-meta span::before { margin-right: 3px; }
+
+  .card-notes {
+    font-size: .78rem;
+    color: #888;
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid #f0f0f0;
+  }
+
+  .card-links {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .card-links a {
+    font-size: .78rem;
+    color: #1a56a0;
+    text-decoration: none;
+  }
+  .card-links a:hover { text-decoration: underline; }
+
+  .badge {
+    display: inline-block;
+    font-size: .7rem;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: #e8f0fb;
+    color: #1a56a0;
+    font-weight: 600;
+  }
+
+  .empty { text-align: center; color: #999; padding: 40px 0; font-size: .9rem; }
+
+  /* モーダル */
+  #modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.55);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  #modal {
+    background: #fff;
+    border-radius: 12px;
+    padding: 32px 28px 24px;
+    max-width: 480px;
+    width: calc(100% - 32px);
+    box-shadow: 0 8px 32px rgba(0,0,0,.2);
+  }
+  #modal h2 { font-size: 1.1rem; margin-bottom: 16px; color: #1a56a0; }
+  #modal ul {
+    padding-left: 1.2em;
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  #modal li { font-size: .88rem; line-height: 1.6; color: #333; }
+  #modal li strong { color: #c0392b; }
+  #modal-agree {
+    width: 100%;
+    padding: 12px;
+    background: #1a56a0;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  #modal-agree:hover { background: #154a8a; }
+</style>
+</head>
+<body>
+
+<div id="modal-overlay">
+  <div id="modal">
+    <h2>ご利用の前にご確認ください</h2>
+    <ul>
+      <li><strong>こちらは<a href="https://www.pons-llc.com/"">合同会社Pons</a>による非公式のプロジェクトです。</strong>本アプリは練馬区が制作・提供する公式サービスではありません。</li>
+      <li><strong>オープンデータを利用しています。</strong>掲載データは練馬区が公開するオープンデータ（<a href="https://www.city.nerima.tokyo.jp/kusei/tokei/opendata/opendatasite/tokei_kusei/tetuzuki.htm" target="_blank" rel="noopener noreferrer">手続き情報一覧</a>、2023年9月30日時点）を <a href="https://creativecommons.org/licenses/by/4.0/deed.ja" target="_blank" rel="noopener noreferrer">CC BY 4.0</a> に基づき改変して使用しています。情報の正確性・最新性は保証されません。手続きの詳細は必ず練馬区の公式サイトまたは窓口でご確認ください。</li>
+      <li><strong>初回起動時に約120MBのAIモデルをダウンロードします。</strong>モバイル回線など通信量に制限がある環境ではご注意ください。2回目以降はブラウザにキャッシュされオフラインで動作します。</li>
+      <li><strong>使用ライブラリ・モデルはバージョンを固定しています。</strong>ライブラリは <a href="https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/" target="_blank" rel="noopener noreferrer">@xenova/transformers 2.17.2</a>、モデルは <a href="https://huggingface.co/Xenova/multilingual-e5-small/tree/761b726dd34fb83930e26aab4e9ac3899aa1fa78" target="_blank" rel="noopener noreferrer">Xenova/multilingual-e5-small (commit: 761b726)</a> を安全性を確認した上で使用しています。</li>
+      <li><strong>免責事項：</strong>本アプリの利用によって生じたいかなる損害についても、制作者は一切の責任を負いません。</li>
+    </ul>
+    <button id="modal-agree">同意して利用する</button>
+  </div>
+</div>
+
+<header>
+  <h1>練馬区 手続き検索</h1>
+</header>
+
+<main>
+  <div id="search-box">
+    <input type="search" id="query" placeholder="例: 引越し後の住所変更手続き" disabled autocomplete="off">
+    <div id="progress-bar"><div id="progress-fill"></div></div>
+    <div id="status">初期化中...</div>
+  </div>
+  <div id="results"></div>
+</main>
+
+<script type="module" src="app.mjs"></script>
+
+</body>
+</html>
