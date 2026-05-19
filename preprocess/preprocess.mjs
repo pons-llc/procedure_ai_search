@@ -53,6 +53,22 @@ console.log('CSVを読み込み中...');
 const rows = parseCSV(readFileSync(CSV_FILE));
 console.log(`  ${rows.length} 件`);
 
+// ユースケースをロード (generate_usecases.mjs で生成)
+const usecases = existsSync('usecases.json')
+  ? JSON.parse(readFileSync('usecases.json', 'utf-8'))
+  : {};
+if (Object.keys(usecases).length > 0) {
+  console.log(`ユースケースを ${Object.keys(usecases).length} 件ロードしました`);
+}
+
+// タグをロード (generate_tags.mjs で生成)
+const tags = existsSync('tags.json')
+  ? JSON.parse(readFileSync('tags.json', 'utf-8'))
+  : {};
+if (Object.keys(tags).length > 0) {
+  console.log(`タグを ${Object.keys(tags).length} 件ロードしました`);
+}
+
 const docs = rows.map(r => ({
   title:         r['手続名称']   ?? '',
   officialName:  r['書類正式名称'] ?? '',
@@ -64,15 +80,8 @@ const docs = rows.map(r => ({
   phone:         r['電話番号']   ?? '',
   url:           r['URL']        ?? '',
   online:        r['電子申請']   ?? '',
+  tags:          tags[`${r['手続名称'] ?? ''}|${r['担当課'] ?? ''}`] ?? [],
 }));
-
-// ユースケースをロード (generate_usecases.mjs で生成)
-const usecases = existsSync('usecases.json')
-  ? JSON.parse(readFileSync('usecases.json', 'utf-8'))
-  : {};
-if (Object.keys(usecases).length > 0) {
-  console.log(`ユースケースを ${Object.keys(usecases).length} 件ロードしました`);
-}
 
 // 埋め込み用テキスト (multilingual-e5 の "passage: " プレフィックス)
 const texts = docs.map(d => {
