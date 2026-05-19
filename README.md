@@ -186,6 +186,14 @@ python3 -m http.server 8080 --directory public
 
 ---
 
+## ライセンス
+
+本リポジトリのソースコードは [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) で公開しています。
+
+ただし、`public/embeddings.json` に含まれるデータは練馬区のオープンデータ（CC BY 4.0）を改変したものであり、Apache 2.0 の適用範囲外です。
+
+---
+
 ## 免責事項
 
 本アプリの利用によって生じたいかなる損害についても、制作者は一切の責任を負いません。  
