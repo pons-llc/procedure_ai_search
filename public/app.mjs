@@ -10,11 +10,25 @@ await new Promise(resolve => {
 
 const MODEL = 'Xenova/multilingual-e5-small';
 const MODEL_REVISION = '761b726dd34fb83930e26aab4e9ac3899aa1fa78';
-const TOP_K = 10;
+const TOP_K = 20;
+
+const FILTERS = [
+  { id: 'children',      label: '子どもがいる' },
+  { id: 'single-parent', label: 'ひとり親'     },
+  { id: 'elderly',       label: '高齢・介護'   },
+  { id: 'disability',    label: '障害がある'   },
+  { id: 'marriage',      label: '結婚'         },
+  { id: 'pregnancy',     label: '妊娠'         },
+  { id: 'childbirth',    label: '出産'         },
+  { id: 'moving',        label: '引っ越し'     },
+  { id: 'death',         label: '死亡'         },
+];
+const activeFilters = new Set();
 
 const queryEl   = document.getElementById('query');
 const statusEl  = document.getElementById('status');
 const resultsEl = document.getElementById('results');
+const filtersEl = document.getElementById('filters');
 const progressBar  = document.getElementById('progress-bar');
 const progressFill = document.getElementById('progress-fill');
 
@@ -60,6 +74,25 @@ queryEl.disabled = false;
 queryEl.focus();
 setStatus(`準備完了 — ${docsData.length} 件の手続きを検索できます`, 'ready');
 
+// --- フィルターチップ描画 ---
+FILTERS.forEach(f => {
+  const chip = document.createElement('button');
+  chip.className = 'chip';
+  chip.textContent = f.label;
+  chip.addEventListener('click', () => {
+    if (activeFilters.has(f.id)) {
+      activeFilters.delete(f.id);
+      chip.classList.remove('active');
+    } else {
+      activeFilters.add(f.id);
+      chip.classList.add('active');
+    }
+    const q = queryEl.value.trim();
+    if (q) search(q); else resultsEl.replaceChildren();
+  });
+  filtersEl.appendChild(chip);
+});
+
 // --- 検索 ---
 let debounceTimer = null;
 queryEl.addEventListener('input', () => {
@@ -69,15 +102,22 @@ queryEl.addEventListener('input', () => {
   debounceTimer = setTimeout(() => search(q), 300);
 });
 
+function getFilteredIndices() {
+  if (activeFilters.size === 0) return null;
+  return docsData.reduce((acc, d, i) => {
+    const match = [...activeFilters].every(id => (d.tags ?? []).includes(id));
+    if (match) acc.push(i);
+    return acc;
+  }, []);
+}
+
 async function search(queryText) {
   setStatus('検索中...', '');
   const output = await extractor(`query: ${queryText}`, { pooling: 'mean', normalize: true });
   const qVec = new Float32Array(output.data);
 
-  const scored = embMatrix.map((docVec, i) => ({
-    i,
-    score: cosine(qVec, docVec),
-  }));
+  const indices = getFilteredIndices() ?? embMatrix.map((_, i) => i);
+  const scored = indices.map(i => ({ i, score: cosine(qVec, embMatrix[i]) }));
   scored.sort((a, b) => b.score - a.score);
 
   renderResults(scored.slice(0, TOP_K));
